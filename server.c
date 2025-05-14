@@ -12,21 +12,29 @@
 #define PORT 1337
 #define MAX_CLIENTS 100
 int sock;
-int client_sockets[MAX_CLIENTS];
+typedef struct {
+	int socket;
+	char nickname[50];
+} Client;
+Client clients[MAX_CLIENTS];
 int client_count = 0;
 pthread_mutex_t client_lock = PTHREAD_MUTEX_INITIALIZER;
 
-void add_client(int socket) {
+void add_client(int socket, char *nickname) {
 	pthread_mutex_lock(&client_lock);
-	if(client_count < MAX_CLIENTS) client_sockets[client_count++] = socket;
+	if(client_count < MAX_CLIENTS){
+		clients[client_count].socket = socket;
+		strncpy(clients[client_count].nickname, nickname, sizeof(clients[client_count].nickname));
+		client_count++;
+	}
 	pthread_mutex_unlock(&client_lock);
 }
 
 void remove_client(int socket) {
 	pthread_mutex_lock(&client_lock);
 	for(int i = 0; i < client_count; i++) {
-		if(client_sockets[i] == socket) {
-			client_sockets[i] = client_sockets[--client_count];
+		if(clients[i].socket == socket) {
+			clients[i] = clients[--client_count];
 			break;
 		}
 	}
@@ -35,29 +43,46 @@ void remove_client(int socket) {
 
 void broadcast_message(char *msg, int sender_socket) {
 	pthread_mutex_lock(&client_lock);
+	char final_msg[1084];
+
+	const char *sender_nick = "Unknown";
 	for(int i = 0; i < client_count; i++) {
-		int client_sock = client_sockets[i];
-		if (client_sock != sender_socket) write(client_sock, msg, strlen(msg) + 1);
+		if (clients[i].socket == sender_socket)	sender_nick = clients[i].nickname;
 	}
+
+	snprintf(final_msg, sizeof(final_msg), "%s: %s", sender_nick, msg);
+
+	for(int i = 0; i < client_count; i++) {
+		if(clients[i].socket != sender_socket) write(clients[i].socket, final_msg, strlen(final_msg) +1);
+	}
+
 	pthread_mutex_unlock(&client_lock);
 }
 
 void *handle_client(void *arg) {
 	int client_socket =  *((int *) arg);
 	free(arg);
+	char nickname[50];
+	read(client_socket, nickname, sizeof(nickname));
+	nickname[strcspn(nickname, "\n")] = 0;
+	add_client(client_socket, nickname);
 	char buffer[1024];
-	add_client(client_socket);
 
 	while(1) {
 		ssize_t bytes_received = read(client_socket, buffer, sizeof(buffer));
-		if (bytes_received <= 0){
-			break;
+		if (bytes_received <= 0) break;
+		const char *sender_name = "Unknown";
+		for(int i = 0; i < client_count; i++) {
+			if(clients[i].socket == client_socket) {
+				sender_name = clients[i].nickname;
+				break;
+			}
 		}
-		printf("\n[SERVER] Received message: %s\n", buffer);
+		printf("\n[SERVER] Received message from %s: %s\n", sender_name, buffer);
 		broadcast_message(buffer, client_socket);
 	}
-	remove_client(client_socket);
 
+	remove_client(client_socket);
 	close(client_socket);
 	pthread_exit(NULL);
 }
@@ -107,6 +132,7 @@ int main(void) {
 			free(client_sock);
 			continue;
 		}
+
 		pthread_t tid;
 		pthread_create(&tid, NULL, handle_client, client_sock);
 		pthread_detach(tid);

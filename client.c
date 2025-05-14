@@ -30,6 +30,7 @@ int main(void) {
 	struct sockaddr_in server_name;
 	size_t len;
 	char buffer[1024];
+	char nickname[50];
 
 	sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (sock < 0) {
@@ -42,10 +43,22 @@ int main(void) {
 	server_name.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // 127.0.0.1
 	server_name.sin_port = htons(PORT);
 
+	printf("Please enter your nickname: ");
+	fgets(nickname, sizeof(nickname), stdin);
+
+	if (strlen(nickname) == 0) {
+		printf("Invaild nickname. Exiting..\n");
+		exit(1);
+	}
+
+	nickname[strcspn(nickname, "\n")] = 0;
+
 	if(connect(sock, (struct sockaddr *)&server_name, sizeof(server_name)) < 0) {
 		perror("Error establishing communications");
 		exit(1);
 	}
+
+	write(sock, nickname, strlen(nickname) + 1);
 
 	pthread_t tid;
 	pthread_create(&tid, NULL, receive_handler, &sock);
