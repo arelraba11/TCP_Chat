@@ -1,0 +1,27 @@
+# Ignore compiled binaries
+client
+server
+
+# Ignore object files
+*.o
+*.out
+*.obj
+*.exe
+
+*.swp
+*~
+*.swo
+*.bak
+
+.DS_Store
+
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+build/
+Makefile
+
+.git/*LOCK*
