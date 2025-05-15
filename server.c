@@ -115,6 +115,17 @@ void *handle_client(void *arg) {
 			printf("[SERVER] %s has requested to quit.\n", get_nickname(client_socket));
 			break;
 		}
+
+		// Handle "/help" command
+		if(strncmp(buffer, "/help", 5) == 0) {
+			const char *help_msg =
+				"[SERVER] Available commands:\n"
+				"/list		- show all connected users\n"
+				"/quit		- disconnect from the chat\n"
+				"/help		- show this help message\n";
+			write(client_socket, help_msg, strlen(help_msg));
+			continue;
+		}
 		// Handle private message
 		if(buffer[0] == '@') {
 			char *space_pos = strchr(buffer, ' ');
