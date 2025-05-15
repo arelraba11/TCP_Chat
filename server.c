@@ -94,6 +94,21 @@ void *handle_client(void *arg) {
 		if (bytes_received <= 0) break;
 		buffer[strcspn(buffer, "\n")] = 0; // Trim newline
 
+		// Handle "/list" command - show all connected users
+		if(strncmp(buffer, "/list", 5) == 0) {
+			char list_msg[BUFFER_SIZE] = "[SERVER] Connected users:\n";
+
+			pthread_mutex_lock(&client_lock);
+			for(int i = 0; i < client_count; i++) {
+				strncat(list_msg, " - ",BUFFER_SIZE -strlen(list_msg) - 1);
+				strncat(list_msg, clients[i].nickname, BUFFER_SIZE - strlen(list_msg) - 1);
+				strncat(list_msg, "\n", BUFFER_SIZE - strlen(list_msg) - 1);
+			}
+			pthread_mutex_unlock(&client_lock);
+
+			write(client_socket, list_msg, strlen(list_msg));
+			continue;
+		}
 		// Handle private message
 		if(buffer[0] == '@') {
 			char *space_pos = strchr(buffer, ' ');
