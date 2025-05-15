@@ -7,14 +7,15 @@
 #include <netinet/in.h>
 #include <pthread.h>
 
-#define PORT 1337
-#define MAX_CLIENTS 100
-#define NICKNAME_LEN 50
-#define BUFFER_SIZE 1024
+#define PORT 1337		// server listening port
+#define MAX_CLIENTS 100		// maximum number of concurrrent clients
+#define NICKNAME_LEN 50		// max length of nickname
+#define BUFFER_SIZE 1024	// size of message buffer
 
+// Structure to store client socket and nickname
 typedef struct {
 	int socket;
-	char nickname[50];
+	char nickname[NICKNAME_LEN];
 } Client;
 
 Client clients[MAX_CLIENTS];
@@ -22,6 +23,7 @@ int client_count = 0;
 int server_socket;
 pthread_mutex_t client_lock = PTHREAD_MUTEX_INITIALIZER;
 
+// Get nickname for a given socket
 const char* get_nickname(int socket) {
 	for(int i = 0; i < client_count; i++) {
 		if(clients[i].socket == socket) {
@@ -31,6 +33,7 @@ const char* get_nickname(int socket) {
 	return "Unknown";
 }
 
+// Add a new client to the client list
 void add_client(int socket, char *nickname) {
 	pthread_mutex_lock(&client_lock);
 	if(client_count >= MAX_CLIENTS){
@@ -43,17 +46,18 @@ void add_client(int socket, char *nickname) {
 	pthread_mutex_unlock(&client_lock);
 }
 
+// Remove client by socket
 void remove_client(int socket) {
 	pthread_mutex_lock(&client_lock);
 	for(int i = 0; i < client_count; i++) {
 		if(clients[i].socket == socket) {
-			clients[i] = clients[--client_count];
+			clients[i] = clients[--client_count]; // Replace with last and decrement
 			break;
 		}
 	}
 	pthread_mutex_unlock(&client_lock);
 }
-
+// Send message to all clients except the sender
 void broadcast_message(char *msg, int sender_socket) {
 	pthread_mutex_lock(&client_lock);
 
@@ -70,6 +74,7 @@ void broadcast_message(char *msg, int sender_socket) {
 	pthread_mutex_unlock(&client_lock);
 }
 
+// Handle each client in a separate thread
 void *handle_client(void *arg) {
 	int client_socket =  *((int *) arg);
 	free(arg);
@@ -80,15 +85,16 @@ void *handle_client(void *arg) {
 		pthread_exit(NULL);
 	}
 
-	nickname[strcspn(nickname, "\n")] = 0;
+	nickname[strcspn(nickname, "\n")] = 0; // Remove newline
 	add_client(client_socket, nickname);
 
 	char buffer[BUFFER_SIZE];
 	while(1) {
 		ssize_t bytes_received = read(client_socket, buffer, sizeof(buffer));
 		if (bytes_received <= 0) break;
-		buffer[strcspn(buffer, "\n")] = 0;
+		buffer[strcspn(buffer, "\n")] = 0; // Trim newline
 
+		// Handle private message
 		if(buffer[0] == '@') {
 			char *space_pos = strchr(buffer, ' ');
 			if(space_pos == NULL) {
@@ -102,10 +108,11 @@ void *handle_client(void *arg) {
 			if (name_len >= NICKNAME_LEN) name_len = NICKNAME_LEN - 1;
 
 			strncpy(target_nickname, buffer + 1, name_len);
-			target_nickname[NICKNAME_LEN] = '\0';
+			target_nickname[name_len] = '\0';
 
 			char *message_content = space_pos + 1;
 
+			// Find recipient socket
 			int target_socket = -1;
 			pthread_mutex_lock(&client_lock);
 			for(int i = 0; i< client_count; i++) {
@@ -116,13 +123,15 @@ void *handle_client(void *arg) {
 			}
 			pthread_mutex_unlock(&client_lock);
 
+			// if recipient not found
 			if(target_socket == -1) {
 				char error_msg[100];
-				snprintf(error_msg, sizeof(error_msg), "[SERVER] No suck user: %s\n", target_nickname);
+				snprintf(error_msg, sizeof(error_msg), "[SERVER] No such user: %s\n", target_nickname);
 				write(client_socket, error_msg, strlen(error_msg));
 				continue;
 			}
 
+			// Send private message to both sender and recipient
 			char private_msg[BUFFER_SIZE + NICKNAME_LEN + 20];
 			snprintf(private_msg, sizeof(private_msg), "[PRIVATE] %s: %s\n", get_nickname(client_socket), message_content);
 
@@ -131,17 +140,20 @@ void *handle_client(void *arg) {
 
 			printf("[SERVER] Received message from %s: %s\n", get_nickname(client_socket), buffer);
 		} else {
+			// Broadcast public message
 			printf("[SERVER] Received message from %s: %s\n", get_nickname(client_socket), buffer);
 			broadcast_message(buffer, client_socket);
 		}
 	}
 
+	// Cleanup after disconnection
 	printf("[SERVER] %s disconnected.\n", get_nickname(client_socket));
 	remove_client(client_socket);
 	close(client_socket);
 	pthread_exit(NULL);
 }
 
+// Handle CTRL+C interrupt (graceful shutdown)
 void handle_sigint(int sig){
 	printf("\n[SERVER] Caught Ctrl+C - shutting down... \n");
 	close(server_socket);
@@ -158,23 +170,28 @@ int main(void) {
 		exit(1);
 	}
 
+	// Allow address reuse
 	int opt = 1;
 	setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
+	// Set up server address
 	memset(&serv_name, 0, sizeof(serv_name));
 	serv_name.sin_family = AF_INET;
 	serv_name.sin_addr.s_addr = htonl(INADDR_ANY);
 	serv_name.sin_port = htons(PORT);
 
+	// Bind socket
 	if(bind(server_socket, (struct sockaddr *)&serv_name, sizeof(serv_name)) < 0) {
 		perror("Error binding socket");
 		close(server_socket);
 		exit(1);
 	}
 
+	// Start socket
 	listen(server_socket, 10);
 	printf("[SERVER] Listening on port %d...\n", PORT);
 
+	// Accept client in loop
 	while(1) {
 		struct sockaddr_in client_addr;
 		socklen_t client_len = sizeof(client_addr);
@@ -189,6 +206,7 @@ int main(void) {
 			continue;
 		}
 
+		// Create a thread for each client
 		pthread_t tid;
 		pthread_create(&tid, NULL, handle_client, client_sock);
 		pthread_detach(tid);
