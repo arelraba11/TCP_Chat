@@ -100,7 +100,7 @@ void *handle_client(void *arg) {
 
 			pthread_mutex_lock(&client_lock);
 			for(int i = 0; i < client_count; i++) {
-				strncat(list_msg, " - ",BUFFER_SIZE -strlen(list_msg) - 1);
+				strncat(list_msg, " - ",BUFFER_SIZE - strlen(list_msg) - 1);
 				strncat(list_msg, clients[i].nickname, BUFFER_SIZE - strlen(list_msg) - 1);
 				strncat(list_msg, "\n", BUFFER_SIZE - strlen(list_msg) - 1);
 			}
@@ -108,6 +108,12 @@ void *handle_client(void *arg) {
 
 			write(client_socket, list_msg, strlen(list_msg));
 			continue;
+		}
+
+		// Handle "/quit" command - quit from server
+		if(strncmp(buffer, "/quit", 5) == 0) {
+			printf("[SERVER] %s has requested to quit.\n", get_nickname(client_socket));
+			break;
 		}
 		// Handle private message
 		if(buffer[0] == '@') {
