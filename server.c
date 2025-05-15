@@ -87,8 +87,53 @@ void *handle_client(void *arg) {
 	while(1) {
 		ssize_t bytes_received = read(client_socket, buffer, sizeof(buffer));
 		if (bytes_received <= 0) break;
-		printf("[SERVER] Received message from %s: %s\n", get_nickname(client_socket), buffer);
-		broadcast_message(buffer, client_socket);
+		buffer[strcspn(buffer, "\n")] = 0;
+
+		if(buffer[0] == '@') {
+			char *space_pos = strchr(buffer, ' ');
+			if(space_pos == NULL) {
+				const char *error = "[SERVER] Invalid private message format. Use @nickname message\n";
+				write(client_socket, error, strlen(error));
+				continue;
+			}
+
+			char target_nickname[NICKNAME_LEN];
+			size_t name_len = space_pos - buffer - 1;
+			if (name_len >= NICKNAME_LEN) name_len = NICKNAME_LEN - 1;
+
+			strncpy(target_nickname, buffer + 1, name_len);
+			target_nickname[NICKNAME_LEN] = '\0';
+
+			char *message_content = space_pos + 1;
+
+			int target_socket = -1;
+			pthread_mutex_lock(&client_lock);
+			for(int i = 0; i< client_count; i++) {
+				if(strcmp(clients[i].nickname, target_nickname) == 0) {
+					target_socket = clients[i].socket;
+					break;
+				}
+			}
+			pthread_mutex_unlock(&client_lock);
+
+			if(target_socket == -1) {
+				char error_msg[100];
+				snprintf(error_msg, sizeof(error_msg), "[SERVER] No suck user: %s\n", target_nickname);
+				write(client_socket, error_msg, strlen(error_msg));
+				continue;
+			}
+
+			char private_msg[BUFFER_SIZE + NICKNAME_LEN + 20];
+			snprintf(private_msg, sizeof(private_msg), "[PRIVATE] %s: %s\n", get_nickname(client_socket), message_content);
+
+			write(target_socket, private_msg, strlen(private_msg));
+			write(client_socket, private_msg, strlen(private_msg));
+
+			printf("[SERVER] Received message from %s: %s\n", get_nickname(client_socket), buffer);
+		} else {
+			printf("[SERVER] Received message from %s: %s\n", get_nickname(client_socket), buffer);
+			broadcast_message(buffer, client_socket);
+		}
 	}
 
 	printf("[SERVER] %s disconnected.\n", get_nickname(client_socket));
