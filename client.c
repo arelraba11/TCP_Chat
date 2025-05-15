@@ -9,6 +9,8 @@
 #define PORT 1337		// Server prot number
 #define NICKNAME_LEN 50		// Max length of nickname
 #define BUFFER_SIZE 1024	// Message buffer size
+#define RED "\033[1;31m"
+#define RESET "\033[0m"
 
 // Thread function to handle receiving messages from thr server
 void *receive_handler(void *arg) {
@@ -22,7 +24,9 @@ void *receive_handler(void *arg) {
 			close(sock);
 			exit(0);
 		}
-		printf("[CHAT] %s\n", buffer);
+		if(strstr(buffer, "[PRIVATE]") == buffer) {
+			printf(RED "[CHAT] %s" RESET "\n", buffer);
+		} else printf("[CHAT] %s\n", buffer);
 	}
 	return NULL;
 }
