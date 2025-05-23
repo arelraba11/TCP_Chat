@@ -18,15 +18,20 @@ void *receive_handler(void *arg) {
 	char buffer[BUFFER_SIZE];
 
 	while(1) {
-		ssize_t n = read(sock, buffer, sizeof(buffer));
+		ssize_t n = read(sock, buffer, sizeof(buffer) - 1);
 		if (n <= 0) {
 			printf("[CLIENT] Disconnected from server. Exiting... \n");
 			close(sock);
 			exit(0);
 		}
-		if(strstr(buffer, "[PRIVATE]") == buffer) {
-			printf(RED "[CHAT] %s" RESET "\n", buffer);
-		} else printf("[CHAT] %s\n", buffer);
+		buffer[n] = '\0';
+
+		char *line = strtok(buffer, "\n");
+		while (line != NULL) {
+			if (strstr(line, "[PRIVATE]") == line) printf(RED "[CHAT] %s" RESET "\n", line);
+			else printf("[CHAT] %s\n", line);
+			line = strtok(NULL, "\n");
+		}
 	}
 	return NULL;
 }
@@ -39,10 +44,6 @@ int main(void) {
 
 	// Create socket
 	sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (sock < 0) {
-		perror("[CLIENT] Error opening channel");
-		exit(1);
-	}
 
 	// Setup server address
 	memset(&server_name, 0, sizeof(server_name));

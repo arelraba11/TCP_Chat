@@ -36,13 +36,11 @@ const char* get_nickname(int socket) {
 // Add a new client to the client list
 void add_client(int socket, char *nickname) {
 	pthread_mutex_lock(&client_lock);
-	if(client_count >= MAX_CLIENTS){
-		pthread_mutex_unlock(&client_lock);
-		return;
+	if(client_count < MAX_CLIENTS){
+		clients[client_count].socket = socket;
+		strncpy(clients[client_count].nickname, nickname, NICKNAME_LEN);
+		client_count++;
 	}
-	clients[client_count].socket = socket;
-	strncpy(clients[client_count].nickname, nickname, NICKNAME_LEN);
-	client_count++;
 	pthread_mutex_unlock(&client_lock);
 }
 
@@ -51,7 +49,7 @@ void remove_client(int socket) {
 	pthread_mutex_lock(&client_lock);
 	for(int i = 0; i < client_count; i++) {
 		if(clients[i].socket == socket) {
-			clients[i] = clients[--client_count]; // Replace with last and decrement
+			clients[i] = clients[--client_count];
 			break;
 		}
 	}
@@ -63,7 +61,7 @@ void broadcast_message(char *msg, int sender_socket) {
 
 	char final_msg[BUFFER_SIZE + NICKNAME_LEN + 10];
 	const char *sender_nick = get_nickname(sender_socket);
-	snprintf(final_msg, sizeof(final_msg), "%s: %s", sender_nick, msg);
+	snprintf(final_msg, sizeof(final_msg), "%s: %s\n", sender_nick, msg);
 
 	for(int i = 0; i < client_count; i++) {
 		if (clients[i].socket != sender_socket) {
@@ -92,20 +90,19 @@ void *handle_client(void *arg) {
 	while(1) {
 		ssize_t bytes_received = read(client_socket, buffer, sizeof(buffer));
 		if (bytes_received <= 0) break;
-		buffer[strcspn(buffer, "\n")] = 0; // Trim newline
+
+		buffer[strcspn(buffer, "\n")] = 0;
 
 		// Handle "/list" command - show all connected users
 		if(strncmp(buffer, "/list", 5) == 0) {
 			char list_msg[BUFFER_SIZE] = "[SERVER] Connected users:\n";
-
 			pthread_mutex_lock(&client_lock);
 			for(int i = 0; i < client_count; i++) {
-				strncat(list_msg, " - ",BUFFER_SIZE - strlen(list_msg) - 1);
-				strncat(list_msg, clients[i].nickname, BUFFER_SIZE - strlen(list_msg) - 1);
-				strncat(list_msg, "\n", BUFFER_SIZE - strlen(list_msg) - 1);
+				strncat(list_msg, " - ",sizeof(list_msg) - strlen(list_msg) - 1);
+				strncat(list_msg, clients[i].nickname, sizeof(list_msg) - strlen(list_msg) - 1);
+				strncat(list_msg, "\n", sizeof(list_msg) - strlen(list_msg) - 1);
 			}
 			pthread_mutex_unlock(&client_lock);
-
 			write(client_socket, list_msg, strlen(list_msg));
 			continue;
 		}
@@ -169,11 +166,7 @@ void *handle_client(void *arg) {
 
 			write(target_socket, private_msg, strlen(private_msg));
 			write(client_socket, private_msg, strlen(private_msg));
-
-			printf("[SERVER] Received message from %s: %s\n", get_nickname(client_socket), buffer);
 		} else {
-			// Broadcast public message
-			printf("[SERVER] Received message from %s: %s\n", get_nickname(client_socket), buffer);
 			broadcast_message(buffer, client_socket);
 		}
 	}
@@ -194,13 +187,8 @@ void handle_sigint(int sig){
 
 int main(void) {
 	signal(SIGINT, handle_sigint);
-
 	struct sockaddr_in serv_name;
 	server_socket = socket(AF_INET, SOCK_STREAM, 0);
-	if (server_socket < 0) {
-		perror("Error creating socket");
-		exit(1);
-	}
 
 	// Allow address reuse
 	int opt = 1;
@@ -229,7 +217,6 @@ int main(void) {
 		socklen_t client_len = sizeof(client_addr);
 
 		int *client_sock = malloc(sizeof(int));
-		if(!client_sock) continue;
 
 		*client_sock = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
 		if(*client_sock < 0){
